@@ -8,14 +8,14 @@ type: Standards Track
 category: ERC
 created: 2022-10-16
 updated: 2026-04-14
-requires: 
+requires:
 ---
 
 # Apeiron Protocol Core
 
 ## Simple Summary
 
-A standard for Console-managed onchain Signs, where all Sign state changes occur through immutable Console functions, and cross-Console interactions require compliance checks of the remote Console and its active Cartridge.
+A standard for Console-managed onchain Signs, where all Sign state changes occur through immutable Console functions, and cross-Console interactions rely on whitelist-based compliance checks of remote Consoles and their active Cartridges.
 
 ## Abstract
 
@@ -28,7 +28,7 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
   - Sign state is stored and mutated only through Console functions.
   - Consoles are immutable after deployment.
   - A Console may have one active Cartridge at a time.
-  - Cross-Console operations require compliance checks based on whitelisted runtime code hashes.
+  - Cross-Console operations rely on whitelist-based compliance checks using allowed runtime code hashes.
 - State that:
   - `tokenId` is the Sign representation anchor.
   - `key` is the immutable autoincrement local identifier.
@@ -36,7 +36,11 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - State that:
   - Multiple Signs MAY share the same `tokenId`.
   - Metadata is mutable while the Sign exists.
-- State that transfer behavior is not native to the Console core and is expected to be implemented by compliant Cartridges, while the actual Sign state changes are always executed through Console functions.
+- State that:
+  - transfer orchestration is expected to be initiated by compliant Cartridges or compliant Console flows,
+  - while all actual Sign state changes are always executed through Console functions.
+- State that:
+  - the Console core includes transfer-readiness, waiting-list, pull-authorization, and inbound/outbound policy controls to guarantee service availability even when no Cartridge is currently connected.
 
 ## Motivation
 
@@ -46,11 +50,13 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
   - sovereign per-user Console storage,
   - representation anchors stored directly onchain,
   - pluggable execution modules,
-  - handshake-based interoperability between compliant counterparties.
+  - whitelist-based interoperability between compliant counterparties,
+  - always-available receive and policy primitives at the Console level.
 - Apeiron Core is designed for systems where:
   - the user or controlling entity owns a dedicated Console,
   - trust in counterparties is explicit and curated through whitelist policy,
-  - state integrity must remain protected from external execution logic.
+  - state integrity must remain protected from external execution logic,
+  - transfer-related availability cannot depend on permanently keeping one Cartridge connected.
 
 ### Design goals
 
@@ -60,6 +66,7 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - Explicit cross-Console trust boundaries.
 - Standardized recovery and locking controls.
 - Support for both unique and same-representation Signs.
+- Always-available core transfer-preparation and policy primitives.
 
 ### Non-goals
 
@@ -67,12 +74,14 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
   - a factory,
   - NFT migration,
   - ERC-721 or ERC-1155 compatibility,
-  - a collection minting model,
-  - the Pong Cartridge,
   - a marketplace,
   - metadata compression formats,
   - frontend behavior,
   - deployment tooling.
+- This ERC may be accompanied by:
+  - a Pong reference Cartridge specification,
+  - a Collection/Asteroids reference Cartridge specification,
+  - a reference implementation repository.
 
 ## Specification
 
@@ -89,6 +98,7 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - Exposes all authorized state-changing functions.
 - Holds whitelist and policy configuration.
 - Holds one active Cartridge address at a time.
+- Holds always-available transfer-readiness and policy state.
 
 #### Cartridge
 
@@ -96,7 +106,7 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - May request actions through Console functions.
 - MUST NOT directly modify Console storage.
 - MUST NOT rely on fallback-driven storage mutation.
-- Transfer logic and other advanced behaviors are expected to be implemented through Cartridges.
+- Advanced execution logic is expected to be implemented through Cartridges.
 
 #### Sign
 
@@ -131,15 +141,15 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 #### active Cartridge
 
 - The single Cartridge address currently connected to the Console.
-- Used as the execution counterpart for Cartridge-based behavior.
+- Used as the execution counterpart for Cartridge-driven behavior.
 
 #### compliant Console
 
-- A remote Console whose runtime code hash is whitelisted by the local Console.
+- A remote Console whose runtime code hash is allowed by the local Console’s whitelist policy.
 
 #### compliant Cartridge
 
-- A remote active Cartridge whose runtime code hash is whitelisted by the local Console.
+- A remote active Cartridge whose runtime code hash is allowed by the local Console’s whitelist policy.
 
 ### Core invariants
 
@@ -158,7 +168,7 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 #### Cartridge connection model
 
 - A Console MAY have at most one active Cartridge at a time.
-- The active Cartridge MAY be plugged, changed, or unplugged only through Console functions and only if compliant with local policy.
+- The active Cartridge MAY be plugged, changed, or unplugged only through Console functions and only if allowed by local policy.
 
 #### Sign identity
 
@@ -177,6 +187,11 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - `metadata` MAY be changed while the Sign exists.
 - Metadata changes MUST occur through Console functions.
 - Metadata MAY be changed by authorized owner, operator, or active Cartridge flows, subject to the implementation and policy rules defined by this standard.
+
+#### Availability invariants
+
+- The Console MUST expose transfer-readiness and transfer-policy primitives without requiring a Cartridge to remain connected at all times.
+- Waiting lists, pull approvals, and inbound/outbound policy state MUST be part of the Console core.
 
 #### Fallback restrictions
 
@@ -239,12 +254,13 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 
 - The Console MUST expose the current active Cartridge address through a getter.
 
-#### Handshake requirement
+#### Whitelist-based compliance checks
 
-- Cross-Console operations defined by compliant Cartridges MUST require compliance checks.
-- At minimum, each side MUST verify:
+- Cross-Console operations defined by this standard or by compliant Cartridges MUST require whitelist-based compliance checks.
+- A Console MUST be able to verify:
   - the remote Console runtime code hash,
-  - the remote Console’s active Cartridge runtime code hash.
+  - the remote Console’s active Cartridge runtime code hash when relevant to the flow.
+- A given flow MAY involve checks by one side or by both sides, depending on the operation semantics and implementation.
 
 #### Compliance meaning
 
@@ -262,7 +278,7 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 #### Global lock state
 
 - The Console MUST implement a mandatory global lock state.
-- The lock state MUST govern the protected control surface defined by the standard.
+- The lock state MUST govern the protected Console control surface defined by the standard.
 
 #### Lock transition delay
 
@@ -277,6 +293,45 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 
 - The Console MUST implement delayed activation for newly added Cartridge runtime code hashes.
 
+### Transfer-readiness and availability controls
+
+#### pushWaitingList
+
+- The Console MUST support an expected-incoming-transfer registry.
+- This registry is used to record transfers that the Console is awaiting from remote Consoles.
+- Registry entries SHOULD minimally reference:
+  - remote `tokenId`,
+  - remote `key`,
+  - remote Console address,
+  - and any additional policy fields required by the implementation.
+
+#### pullTokenPreApprovedList
+
+- The Console MUST support a pull pre-approval registry.
+- This registry is used to authorize remote Consoles, specific remote addresses, or wildcard policies to pull or claim eligible Signs according to the allowed flow.
+
+#### Inbound transfer policy
+
+- The Console MUST support:
+  - `istate`
+  - `idelay`
+  - inbound allowlist / waitlist
+  - inbound blocklist
+- The inbound blocklist MUST prevail over other inbound allowances.
+
+#### Outbound transfer policy
+
+- The Console MUST support:
+  - `ostate`
+  - `odelay`
+  - outbound allowlist / waitlist
+  - outbound blocklist
+- The outbound blocklist MUST prevail over other outbound allowances.
+
+#### Service availability
+
+- These transfer-readiness and transfer-policy controls are part of the Console core to preserve operability even when the active Cartridge is changed, unplugged, or temporarily absent.
+
 ### Recovery and owner change
 
 #### Pre-approved owner change
@@ -285,14 +340,24 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 
 #### Multi-party social recovery
 
-- The standard SHOULD define a standardized optional recovery extension for multi-party social recovery.
+- The standard SHOULD define a standardized multi-party social recovery extension.
 - This extension SHOULD allow a guardian or multiparty process to recover or transfer Console control according to explicit policy.
+
+#### Recovery reset policy
+
+- If a Console ownership transfer is successfully executed through the standardized social recovery flow, the Console SHOULD:
+  - reset `gstate` to unlocked,
+  - reset `istate` to unlocked,
+  - reset `ostate` to unlocked,
+  - reset `glockdelay`, `consoleDelay`, `cartridgeDelay`, `idelay`, and `odelay` to a recovery-safe default.
+- The RECOMMENDED recovery-safe default delay is 7 days.
 
 #### Recovery safety goals
 
 - Prevent irreversible loss of control.
 - Reduce risks from key compromise.
 - Preserve Console immutability while allowing safe ownership recovery.
+- Avoid permanent lock misconfiguration after successful recovery.
 
 ### Metadata model
 
@@ -322,13 +387,23 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 
 ### Transfer boundary
 
-#### Transfer is not native Console behavior
+#### No mandatory generic user-facing transfer function in Console core
 
-- Apeiron Core does not require a native transfer function in the Console core model.
+- Apeiron Core does not require one universal user-facing transfer function to be embedded directly in the Console core.
 
-#### Cartridge-driven transfer
+#### Console-native transfer support primitives
 
-- Transfer behavior is expected to be implemented by compliant Cartridges.
+- Apeiron Core DOES require Console-native primitives for:
+  - transfer readiness,
+  - waiting lists,
+  - pull pre-approvals,
+  - inbound/outbound transfer policy,
+  - compliance-aware receive and forwarding flows.
+
+#### Cartridge-driven orchestration
+
+- Transfer orchestration MAY be initiated by compliant Cartridges.
+- Specific transfer models such as Pong SHOULD be specified in companion documents and reference implementations.
 
 #### Console-executed transfer state changes
 
@@ -358,12 +433,18 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - owner getter
 - active Cartridge getter
 - operator status query
-- lock state query
+- global lock state query
+- inbound state query
+- outbound state query
 - delay configuration queries
 - Console code hash whitelist query
 - Cartridge code hash whitelist query
 - Sign existence / query functions
 - metadata resolver / metadata query functions
+- pushWaitingList query functions
+- pullTokenPreApprovedList query functions
+- inbound allowlist / blocklist query functions
+- outbound allowlist / blocklist query functions
 - policy configuration getters
 
 #### Console write functions
@@ -392,22 +473,40 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - configure lock delay
 - configure Console compliance delay
 - configure Cartridge compliance delay
+- configure inbound state
+- configure inbound delay
+- configure inbound allowlist / blocklist
+- configure outbound state
+- configure outbound delay
+- configure outbound allowlist / blocklist
+
+##### Transfer-readiness configuration
+
+- register expected incoming transfer
+- remove or resolve expected incoming transfer entry
+- pre-approve pull rights
+- revoke pull rights
 
 ##### Owner and recovery
 
 - pre-approve new owner
 - owner pull request / owner claim flow
 - recovery configuration functions
-- optional social recovery functions
+- social recovery functions
+- recovery reset handling
 
 ##### Operator management
 
 - approve operator
 - revoke operator
 
-##### Cartridge execution entrypoint
+##### Compliance and forwarding entrypoint
 
-- standardized execution / forwarding entrypoint used by active Cartridge to trigger compliant Console actions
+- `txFunction` or equivalent standardized execution / forwarding entrypoint used by the active Cartridge or compliant transfer flow to trigger compliance checks and Console-governed actions
+
+##### Receive-side availability entrypoint
+
+- standardized receive / finalize function for compliant incoming transfer flows when local waiting-list and policy conditions are satisfied
 
 ### Events
 
@@ -424,7 +523,15 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - ConsoleCodehashUpdated
 - CartridgeCodehashUpdated
 - GlobalLockUpdated
+- InboundPolicyUpdated
+- OutboundPolicyUpdated
 - DelayUpdated
+
+#### Availability and transfer-preparation events
+
+- PushWaitingRegistered
+- PushWaitingResolved
+- PullPreApprovalUpdated
 
 #### Cartridge events
 
@@ -439,6 +546,7 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - OwnerTransferred
 - RecoveryConfigured
 - RecoveryExecuted
+- RecoveryResetApplied
 
 #### Transfer-related provenance events
 
@@ -477,6 +585,14 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 
 - Protected state changes MUST respect the configured lock rules.
 
+#### Transfer-preparation update
+
+- Waiting-list, pull pre-approval, and inbound/outbound policy changes MUST respect the configured policy and delay rules where applicable.
+
+#### Recovery execution
+
+- A successful social recovery flow SHOULD apply the standardized recovery reset policy.
+
 ### Optional standardized extensions
 
 #### Metadata resolver extension
@@ -491,10 +607,11 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - threshold logic
 - recovery proposal / execution
 - safety delays
+- recovery reset policy
 
 #### Additional policy extension
 
-- advanced policy controls beyond the required global lock model
+- advanced policy controls beyond the required global, inbound, and outbound lock models
 
 ## Rationale
 
@@ -512,13 +629,13 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 ### Why one active Cartridge
 
 - Simpler trust model.
-- Easier compliance checks.
+- Easier policy review.
 - Lower policy complexity.
 - Better security review surface.
 
 ### Why `tokenId` is a string
 
-- Flexible enough for hashes, descriptions, and other direct representation anchors, what makes compliance easy and regulations friendly.
+- Flexible enough for hashes, descriptions, and other direct representation anchors.
 
 ### Why `tokenId` is not required to be unique
 
@@ -535,10 +652,21 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - Apeiron relies on explicit trust decisions by the Console owner.
 - Runtime code hash whitelisting provides deterministic local policy.
 
-### Why transfer is outside the Console core
+### Why transfer-readiness controls belong in the Console core
+
+- These controls are general-purpose availability primitives.
+- They allow the Console to remain operable even when no Cartridge is currently connected.
+- They reduce dependence on permanent Cartridge attachment.
+
+### Why transfer orchestration remains outside the minimal Console core
 
 - Transfer logic is application behavior.
-- Keeping it in Cartridges reduces Console attack surface and preserves modularity.
+- Keeping orchestration modular reduces Console attack surface while preserving flexibility.
+
+### Why recovery resets locks
+
+- Recovery must remain meaningful even if the prior owner misconfigured lock timing or lost keys while the Console was tightly locked.
+- Resetting critical delays to a safe default prevents irrecoverable deadlock.
 
 ## Backwards Compatibility
 
@@ -556,11 +684,15 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 
 ### Whitelist risk
 
-- Incorrectly whitelisting Console or Cartridge code hashes can lead to loss, corruption, or unwanted behavior.
+- Incorrectly allowing Console or Cartridge code hashes can lead to loss, corruption, or unwanted behavior.
 
 ### Active Cartridge risk
 
 - Plugging a new active Cartridge changes the allowed execution surface and must be treated as high risk.
+
+### Availability policy risk
+
+- Misconfigured waiting-list, pull-approval, inbound, or outbound rules can create denial-of-service conditions or unintended transfer acceptance/rejection.
 
 ### Locking and delay safety
 
@@ -577,6 +709,11 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - Recovery features can create their own attack surfaces if poorly configured.
 - Social recovery thresholds and guardian policies should be chosen carefully.
 
+### Recovery reset risk
+
+- Recovery reset logic must be narrowly scoped to successful standardized recovery execution.
+- It must not become an unintended bypass for ordinary lock policy.
+
 ### Fallback and implicit execution
 
 - Unexpected fallback paths increase attack surface and should be minimized or avoided.
@@ -588,6 +725,7 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
   - Console contract
   - basic policy model
   - recovery model
+  - transfer-readiness controls
   - example active Cartridge hookup
   - tests
 - Transfer behavior is expected to be demonstrated through a compliant Pong reference Cartridge published alongside the Apeiron Core reference implementation.
@@ -604,9 +742,9 @@ A standard for Console-managed onchain Signs, where all Sign state changes occur
 - `PONG.md` SHOULD contain:
   - transfer behavior,
   - push/pull model,
-  - waiting list model,
-  - inbound/outbound policy model,
-  - Pong-specific locking semantics.
+  - waiting-list model,
+  - inbound/outbound policy usage,
+  - Pong-specific execution semantics.
 - Collection minting (Asteroids) and other Cartridges MAY be documented in companion specifications or implementation docs.
 
 ## References
