@@ -4,32 +4,42 @@
 
 ## Summary
 
-Pong is the first reference Cartridge for Apeiron Protocol Core. It standardizes transfer-oriented Sign flows, including push and pull semantics, while relying on Apeiron Console primitives for storage, readiness, compliance, and policy enforcement.
+Pong is the first reference Cartridge for Apeiron Protocol Core.
 
-Pong does not own Sign state and MUST NOT directly modify Console storage.
+Pong standardizes transfer-oriented Sign flows, including push and pull semantics, while relying on Apeiron Console primitives for:
+- readiness
+- compliance
+- policy
+- critical state mutation
+- incoming reception
+
+Pong does not own critical Sign state and MUST NOT directly call or mutate `ConsoleStorage`.
 
 ## Purpose
 
 Pong exists to provide a concrete, reusable, and auditable transfer module for Apeiron Consoles.
 
-Pong is responsible for:
-- transfer orchestration
+Pong primarily defines:
+- transfer-oriented orchestration semantics
 - push flows
 - pull flows
-- invoking the proper Console actions
-- preserving Apeiron transfer semantics
+- how a Cartridge should consume the canonical Console handshake
+- how a Cartridge should use Console-native readiness and policy primitives
+- how a Cartridge should preserve Apeiron transfer semantics
 
-Pong is not responsible for:
-- owning Sign state
-- directly mutating Sign storage
-- replacing Console policy
-- replacing Console compliance checks
-- redefining Console waiting-list or approval state
+Pong is not the source of critical Sign truth.
+
+The authoritative responsibilities remain:
+- **Console** for policy, handshake, and compliant remote communication
+- **ConsoleStorage** for critical Sign state
 
 ## Relationship to Apeiron Core
 
 Apeiron Core already defines and requires the following Console-native primitives:
-- `receiveTransfer`
+- `consoleStorage()`
+- `activeCartridge()`
+- `txHandshake(...)`
+- `receiveTransfer(...)`
 - `pushWaitingList`
 - `pullTokenPreApprovedList`
 - `istate`
@@ -40,21 +50,27 @@ Apeiron Core already defines and requires the following Console-native primitive
 - `odelay`
 - outbound allowlist
 - outbound blocklist
-- EXTCODEHASH-based compliance
 - metadata storage and resolution behavior
 
 Pong consumes those primitives.
 
-Pong MUST NOT duplicate them as independent authoritative state.
+Pong SHOULD NOT duplicate them as independent authoritative state.
+
+A Pong implementation MAY keep helper or orchestration state, but it MUST NOT override, replace, or contradict the authoritative Console and ConsoleStorage state used for:
+- compliance
+- readiness
+- policy
+- final Sign mutation
 
 ## Design goals
 
 - Reusable across many Consoles
 - Minimal logic surface
-- No direct Sign storage authority
-- Clean separation between transfer orchestration and Console state
+- No direct critical Sign storage authority
+- Prefer clear separation between transfer-oriented orchestration and authoritative Console state
 - Safe interaction with Console-native readiness and policy controls
 - Compatibility with a Console that can still receive compliant transfers even when no Cartridge is connected
+- Compatibility with the three-contract Apeiron architecture
 
 ## Non-goals
 
@@ -73,25 +89,28 @@ Pong does not standardize:
 
 ### push
 
-A transfer flow initiated by the source side and sent toward a destination Console.
+A transfer flow initiated from the source side and delivered toward a destination Console.
 
 ### pull
 
-A transfer flow initiated by the destination side against an eligible Sign at a remote Console.
+A transfer flow initiated from the destination side against a Sign held by a remote source Console.
 
 ### source Console
 
-The Console that currently holds the Sign.
+The Console that currently governs the Sign and whose bound ConsoleStorage holds the critical Sign state.
 
 ### destination Console
 
-The Console that will receive the recreated Sign.
+The Console that will receive and recreate the Sign through its own bound ConsoleStorage.
 
 ### compliant path
 
-A transfer path in which required EXTCODEHASH-based checks pass according to local Apeiron policy.
+A remote path in which:
+1. remote Console codehash passes
+2. remote ConsoleStorage codehash passes
+3. remote active Cartridge codehash passes, if a Cartridge exists
 
-## Scope of PONG
+## Scope of Pong
 
 Pong defines:
 - outgoing push transfer initiation
@@ -100,186 +119,77 @@ Pong defines:
 - outgoing pull fulfillment
 - recommended sequencing and revert behavior
 - how transfer provenance should be emitted
-- how Pong uses Console-native readiness and policy state
+- how Pong uses Console-native readiness, handshake, and policy state
 
 Pong assumes:
-- all Sign creation happens through Console functions
-- all Sign deletion happens through Console functions
-- incoming reception happens through the Console `receiveTransfer` primitive or an equivalent Console-native reception path defined by Apeiron Core
+- all critical Sign creation happens through Console-authorized calls into ConsoleStorage
+- all critical Sign deletion happens through Console-authorized calls into ConsoleStorage
+- compliant remote communication is Console-to-Console
+- incoming reception happens through the destination Console `receiveTransfer(...)` primitive
 
 ## Core rule
 
-Pong MUST NOT directly create, delete, or mutate Sign state in its own storage or in Console storage.
+Pong MUST NOT directly create, delete, or mutate critical Sign state in its own storage, in Console storage variables, or in ConsoleStorage.
 
-All such changes MUST happen through Console functions.
+All authoritative Sign state changes MUST happen through Console-defined paths.
 
 ## Recommended implementation profile
 
 The RECOMMENDED Pong profile is:
-- storage-less or near-storage-less
 - reusable by many Consoles
-- disconnected from Sign ownership semantics beyond allowed orchestration
-- callable only through an active Cartridge relationship when required by the Console
+- as stateless as practical
+- detached from direct Sign ownership
+- consumed by Consoles as a transfer-oriented logic module
+- dependent on the Console handshake and policy model
 
-A Pong implementation MAY keep minimal helper state if needed by a particular implementation, but such state MUST NOT replace or shadow the authoritative Console state.
+A Pong implementation MAY keep helper state if needed, but such state MUST NOT become authoritative over:
+- compliance
+- readiness
+- critical Sign lifecycle
+- final acceptance or rejection of incoming compliant transfers
 
 ## Transfer semantics
 
-### Push model
+## Push model
 
-In a push flow, the source side initiates the transfer and attempts to deliver the Sign to the destination Console.
+In a push flow:
+- the source-side local logic decides to send a Sign
+- the source Console verifies outbound policy and remote compliance
+- the source Console performs the compliant remote call
+- the destination Console accepts or rejects through its incoming transfer path
 
-The destination Console receives the transfer through its always-available compliant incoming transfer path.
+Pong defines the orchestration semantics for this flow.
 
-### Pull model
+## Pull model
 
-In a pull flow, the destination side initiates a request against a Sign held at a source Console.
+In a pull flow:
+- the destination side requests a remote Sign
+- the source side fulfills only if pull approval and outbound policy allow it
+- the source Console performs the compliant remote call
+- the destination Console accepts or rejects through its incoming transfer path
 
-The source side fulfills the request only if:
-- the Sign is eligible in `pullTokenPreApprovedList`
-- outbound policy allows the flow
-- required EXTCODEHASH-based compliance checks succeed
+Pong defines the orchestration semantics for this flow.
 
-## Normative flows
-
-## Outgoing Push
-
-### Function purpose
-
-The outgoing push flow sends a Sign from a source Console to a destination Console.
-
-### Requirements
-
-Before initiating a push flow, the implementation MUST:
-- verify outbound policy on the source Console
-- verify that the destination path is compliant under EXTCODEHASH-based local rules
-- preserve `tokenId`
-- preserve `metadata`
-- route destination reception through the destination Console incoming transfer primitive
-
-### Required behavior
-
-A successful outgoing push flow MUST:
-1. identify the local Sign by `key`
-2. read the Sign `tokenId`
-3. read or resolve the Sign metadata according to implementation needs
-4. verify outbound policy
-5. verify remote compliance
-6. emit transfer initiation events
-7. delete the local Sign only through the source Console
-8. call the destination Console incoming transfer path
-9. rely on full transaction revert if the destination flow fails
-10. emit transfer completion events on success
-
-### Failure conditions
-
-An outgoing push flow MUST revert when:
-- the local Sign does not exist
-- outbound block policy denies the flow
-- outbound state denies the flow
-- remote Console compliance fails
-- remote active Cartridge compliance fails when relevant to the flow
-- local deletion fails
-- destination reception fails
-
-## Incoming Push Helper
-
-### Function purpose
-
-Pong MAY expose a helper for preparing or coordinating an incoming push.
-
-This helper is not the authoritative destination acceptance mechanism. The authoritative acceptance mechanism remains the destination Console incoming transfer path.
-
-### Relationship to `pushWaitingList`
-
-Pong MAY offer a helper alias for registering expected incoming push data, but the authoritative state MUST remain in the Console `pushWaitingList`.
-
-## Incoming Pull Request
-
-### Function purpose
-
-The pull request flow begins from the destination side, asking a remote source Console to release a specific Sign.
-
-### Requirements
-
-Before initiating a pull request, the implementation SHOULD:
-- verify destination readiness
-- verify that the expected remote path is compliant
-- optionally register waiting expectations locally
-
-### Required behavior
-
-A pull request flow SHOULD:
-1. identify the remote Sign to be requested
-2. prepare local waiting expectations when desired
-3. route the request to the remote source-side Pong fulfillment flow
-4. rely on remote-side approval and outbound policy checks
-
-## Outgoing Pull Fulfillment
-
-### Function purpose
-
-The source side fulfills a valid pull request for a local Sign.
-
-### Requirements
-
-A pull fulfillment flow MUST require that:
-- the local Sign exists
-- the Sign is eligible under `pullTokenPreApprovedList`
-- the requesting remote Console is authorized by the local pull pre-approval rules
-- outbound policy permits the flow
-- EXTCODEHASH-based compliance checks pass for the destination path
-
-### Required behavior
-
-A successful outgoing pull fulfillment MUST:
-1. identify the local Sign
-2. verify pull pre-approval
-3. verify outbound policy
-4. verify remote compliance
-5. emit transfer initiation events
-6. delete the local Sign only through the source Console
-7. call the destination Console incoming transfer path
-8. rely on full transaction revert if the destination flow fails
-9. emit transfer completion events on success
-
-### Failure conditions
-
-A pull fulfillment flow MUST revert when:
-- the local Sign does not exist
-- no pull pre-approval exists
-- outbound block policy denies the flow
-- outbound state denies the flow
-- remote compliance fails
-- local deletion fails
-- destination reception fails
-
-## Compliance rules in Pong
+## Compliance model in Pong
 
 Pong MUST NOT redefine Apeiron compliance.
 
-Pong MUST rely on Apeiron Core EXTCODEHASH-based compliance.
+Pong SHOULD consume the canonical Console `txHandshake(...)` helper whenever it needs to determine whether a remote path is compliant.
 
-When a Pong flow depends on a remote Console path, the implementation MUST:
-- inspect the remote Console runtime code hash
-- verify it against the local Console allowlist
-- inspect the remote active Cartridge runtime code hash when relevant to the flow
-- verify it against the local Cartridge allowlist
+A Pong implementation MAY implement its own compliance routine, but SHOULD NOT do so unless strictly necessary, since Apeiron Core defines the Console handshake as the canonical compliance path.
 
-The use of remote addresses in Pong is only for:
-- identifying the endpoint to inspect
-- routing the transfer
-- applying Console-native inbound/outbound or waiting-list policy
+Pong MUST assume that compliant remote communication is:
+- source Console -> destination Console
 
-Compliance itself remains determined exclusively by runtime code hash allowlists.
+Pong SHOULD NOT be the direct authoritative remote caller in compliant flows.
 
-## Policy rules in Pong
+## Policy model in Pong
 
-Pong MUST respect Console-native transfer policy.
+Pong MUST respect Console-native policy.
 
 ### Inbound
 
-Pong and the destination Console incoming reception path MUST respect:
+Pong and the destination Console incoming transfer path MUST respect:
 - `istate`
 - `idelay`
 - inbound allowlist
@@ -314,9 +224,129 @@ Pong MUST NOT mutate Sign identity.
 Pong MAY use:
 - stored metadata
 - resolved metadata
-- local implementation-defined metadata read paths
+- implementation-defined local read paths
 
 But the destination recreation MUST preserve Apeiron Core semantics.
+
+## Normative flows
+
+## Outgoing Push
+
+### Purpose
+
+The outgoing push flow sends a Sign from a source Console to a destination Console.
+
+### Requirements
+
+Before initiating a push flow, Pong SHOULD ensure that the source Console:
+- verifies outbound policy
+- executes the canonical handshake against the destination Console
+- confirms that the destination path is compliant
+- preserves `tokenId`
+- preserves `metadata`
+- routes destination reception through `destinationConsole.receiveTransfer(...)`
+
+### Required behavior
+
+A successful outgoing push flow MUST:
+1. identify the local Sign by `key`
+2. read the local `tokenId`
+3. read stored or resolved metadata according to the chosen flow
+4. rely on the source Console to verify outbound policy
+5. rely on the source Console to execute the canonical handshake
+6. emit initiation events
+7. delete the local Sign only through the source Console / ConsoleStorage path
+8. call the destination Console incoming transfer path from the source Console
+9. rely on full transaction revert if the destination flow fails
+10. emit completion events on success
+
+### Failure conditions
+
+An outgoing push flow MUST revert when:
+- the local Sign does not exist
+- outbound block policy denies the flow
+- outbound state denies the flow
+- remote Console compliance fails
+- remote ConsoleStorage compliance fails
+- remote active Cartridge compliance fails when a remote Cartridge exists
+- local deletion fails
+- destination reception fails
+
+## Incoming Push Helper
+
+### Purpose
+
+Pong MAY expose helper logic for preparing or coordinating an incoming push.
+
+This helper is not the authoritative destination acceptance mechanism.
+
+The authoritative acceptance mechanism remains the destination Console incoming transfer path.
+
+### Relationship to `pushWaitingList`
+
+Pong MAY offer a helper alias for registering expected incoming push data, but the authoritative state MUST remain in the Console `pushWaitingList`.
+
+## Incoming Pull Request
+
+### Purpose
+
+The pull request flow begins from the destination side, asking a remote source Console to release a specific Sign.
+
+### Requirements
+
+Before initiating a pull request, Pong SHOULD ensure that:
+- destination readiness is checked locally
+- the expected remote path is verified through the source or destination Console handshake
+- waiting expectations are registered locally when desired
+
+### Required behavior
+
+A pull request flow SHOULD:
+1. identify the remote Sign to be requested
+2. prepare local waiting expectations when desired
+3. route the request to the remote source-side Pong fulfillment logic
+4. rely on the source Console for pull approval checks, outbound policy, and remote compliant delivery
+
+## Outgoing Pull Fulfillment
+
+### Purpose
+
+The source side fulfills a valid pull request for a local Sign.
+
+### Requirements
+
+A pull fulfillment flow MUST require that:
+- the local Sign exists
+- the Sign is eligible under `pullTokenPreApprovedList`
+- the requesting remote Console is authorized by local pull pre-approval rules
+- outbound policy permits the flow
+- the source Console canonical handshake confirms that the destination path is compliant
+
+### Required behavior
+
+A successful outgoing pull fulfillment MUST:
+1. identify the local Sign
+2. verify pull pre-approval through the source Console
+3. verify outbound policy through the source Console
+4. verify remote compliance through the source Console handshake
+5. emit initiation events
+6. delete the local Sign only through the source Console / ConsoleStorage path
+7. call the destination Console incoming transfer path from the source Console
+8. rely on full transaction revert if the destination flow fails
+9. emit completion events on success
+
+### Failure conditions
+
+A pull fulfillment flow MUST revert when:
+- the local Sign does not exist
+- no pull pre-approval exists
+- outbound block policy denies the flow
+- outbound state denies the flow
+- remote Console compliance fails
+- remote ConsoleStorage compliance fails
+- remote active Cartridge compliance fails when a remote Cartridge exists
+- local deletion fails
+- destination reception fails
 
 ## Event expectations
 
@@ -324,24 +354,26 @@ Pong implementations SHOULD emit cartridge-level orchestration events in additio
 
 Suggested Pong events:
 - `PongPushInitiated`
-- `PongPushRequested`
 - `PongPushDelivered`
 - `PongPullRequested`
 - `PongPullFulfilled`
 - `PongTransferRejected`
 
-The authoritative Sign lifecycle remains represented by Console events.
+The authoritative Sign lifecycle remains represented by:
+- Console events
+- ConsoleStorage lifecycle events
 
 ## Security considerations
 
-- Pong MUST NOT directly mutate Console storage
+- Pong MUST NOT directly call or mutate ConsoleStorage
 - Pong MUST NOT rely on fallback-driven mutation
 - Pong MUST NOT bypass Console policy
-- Pong MUST treat remote compliance failure as fatal to the flow
+- Pong SHOULD rely on the Console `txHandshake(...)` helper for compliance verification
+- Reimplementing Apeiron compliance inside Pong SHOULD be treated as high risk
 - Pong SHOULD remain as stateless as practical
 - Pong flows SHOULD delete the local Sign before the remote external call
 - Pong flows MUST rely on transaction-wide revert if remote reception fails
-- Pong MUST NOT become a hidden substitute for Console-native policy or compliance logic
+- Pong MUST NOT become a hidden substitute for Console-native policy, compliance, or critical state authority
 
 ## Reference interface suggestion
 
@@ -359,8 +391,10 @@ A reference Pong implementation SHOULD:
 - be reusable by many Consoles
 - keep no authoritative Sign state
 - integrate only through Apeiron Console interfaces
+- rely on ConsoleStorage only indirectly through Console APIs
 - include tests for push and pull flows
 - include tests for waiting-list use
 - include tests for pull pre-approval use
 - include tests for inbound/outbound block precedence
 - include tests for full revert on failed destination reception
+- include tests for 2-way and 3-way compliance paths
