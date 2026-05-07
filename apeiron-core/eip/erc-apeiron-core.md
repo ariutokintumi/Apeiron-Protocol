@@ -2,7 +2,7 @@
 eip: <TBD>
 title: Apeiron Protocol Core
 author: German Abal Bazzano (@ariutokintumi)
-discussions-to: https://ethereum-magicians.org/t/
+discussions-to: discussions-to: https://ethereum-magicians.org/t/<discussion-placeholder>
 status: Draft
 type: Standards Track
 category: ERC

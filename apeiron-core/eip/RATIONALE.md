@@ -439,7 +439,72 @@ without collapsing the whole protocol into one cartridge.
 
 ---
 
-## 20. What should remain outside the ERC
+## 20. Why Apeiron is a self-sovereign token architecture
+
+Apeiron is designed to give the holder or governing entity a sovereign onchain control surface.
+
+A Console is not just a token container.
+
+It is a policy and execution boundary controlled by its owner.
+
+This means the holder can define:
+- which remote paths are acceptable
+- which incoming transfers are expected
+- which outgoing transfers are allowed
+- which execution module is active
+- how recovery is configured
+
+This is a different model from passive token reception systems where assets may be delivered without meaningful local policy.
+
+In Apeiron, self-sovereignty is not only about custody.
+
+It is also about policy, acceptance, recovery, and deterministic trust boundaries.
+
+Not your contract, not your tokens!
+
+---
+
+## 21. Why Apeiron resists token spam and spoofed delivery
+
+Apeiron is not based on an always-open passive token inbox model.
+
+A compliant incoming Sign path must pass:
+- Console policy
+- waiting expectations when required
+- EXTCODEHASH-based compliance checks
+- the Console-controlled incoming reception path
+
+This makes unsolicited delivery, token spam, and spoofed counterparties much harder to express within the compliant Apeiron model.
+
+Apeiron therefore behaves closer to an onchain policy vault than to a passive token receiver.
+
+This is one of the strongest practical consequences of the architecture.
+
+---
+
+## 22. Why Apeiron is useful for RWA and compliance-heavy systems
+
+Apeiron separates critical Sign identity from descriptive metadata.
+
+Its identity core is simple:
+- `tokenId`
+- `key`
+
+Its metadata is complementary:
+- mutable
+- descriptive
+- useful for presentation and annexed information
+- not determinant of the protected identity core
+
+This is especially useful for RWA and compliance-heavy systems because it provides:
+- a simple identity model
+- clearer auditability
+- easier reasoning about what is critical
+- easier attachment of future schemas without redefining the core of the represented Sign
+
+---
+
+## 23. What should remain outside the ERC
 
 The formal ERC should stay focused.
 
@@ -456,7 +521,7 @@ This file exists partly so the ERC can stay formal and concise.
 
 ---
 
-## 21. Historical note
+## 24. Historical note
 
 Apeiron has roots in earlier work and hackathon-era thinking dating back to Devcon Bogotá in October 2022.
 

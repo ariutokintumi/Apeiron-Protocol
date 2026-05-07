@@ -129,9 +129,11 @@ Pong assumes:
 
 ## Core rule
 
-Pong MUST NOT directly create, delete, or mutate critical Sign state in its own storage, in Console storage variables, or in ConsoleStorage.
+Pong has no direct authority over critical Sign state.
 
-All authoritative Sign state changes MUST happen through Console-defined paths.
+Critical Sign lifecycle and identity are enforced by the Console + ConsoleStorage architecture.
+
+All authoritative Sign state changes happen only through Console-defined paths and the restricted `ConsoleStorage` API.
 
 ## Recommended implementation profile
 
@@ -215,11 +217,15 @@ Global Console policy MUST prevail where Apeiron Core defines broader lock seman
 
 ## Metadata behavior in Pong
 
-Pong MUST preserve:
+Pong flows operate under Apeiron Core identity constraints.
+
+Because critical Sign identity is enforced through Console and ConsoleStorage, Pong has no direct authority over:
+- `tokenId`
+- `key`
+
+Pong flows are expected to preserve the Apeiron Core recreation semantics for:
 - `tokenId`
 - `metadata`
-
-Pong MUST NOT mutate Sign identity.
 
 Pong MAY use:
 - stored metadata
