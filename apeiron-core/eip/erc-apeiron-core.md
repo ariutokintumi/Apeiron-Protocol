@@ -2,12 +2,12 @@
 eip: <TBD>
 title: Apeiron Protocol Core
 author: German Abal Bazzano (@ariutokintumi)
-discussions-to: https://ethereum-magicians.org/t/<apeiron-core-thread-placeholder>
+discussions-to: https://ethereum-magicians.org/t/
 status: Draft
 type: Standards Track
 category: ERC
 created: 2022-10-16
-updated: 2026-04-14
+updated: 2026-05-06
 requires:
 ---
 
@@ -15,15 +15,17 @@ requires:
 
 ## Simple Summary
 
-A standard for Console-managed onchain Signs, where all Sign state changes occur through immutable Console functions, and cross-Console interactions rely on whitelist-based compliance checks of remote Consoles and, when relevant, their active Cartridges.
+A standard for Console-managed onchain Signs using a three-contract architecture: `Console`, `ConsoleStorage`, and optional `Cartridge`, where critical Sign state is isolated in `ConsoleStorage`, all compliant remote interactions are Console-to-Console, and cross-Console compatibility is determined by whitelisted runtime code hashes.
 
 ## Abstract
 
-This standard defines Apeiron Protocol Core, a Console/Cartridge architecture for managing onchain Signs.
+This standard defines Apeiron Protocol Core, a token architecture for managing onchain Signs through three components:
 
-A **Console** is an immutable contract that stores and governs Signs. A **Cartridge** is an external execution module that may request actions through Console functions but MUST NOT directly mutate Console storage. A **Sign** is the Apeiron token unit stored by a Console.
+- **Console**: the immutable policy and execution contract
+- **ConsoleStorage**: the isolated contract holding critical Sign state
+- **Cartridge**: an optional execution module connected to a Console
 
-Each Sign contains:
+A **Sign** is the Apeiron token unit associated with:
 - `tokenId`, an immutable representation anchor of type `string`
 - `key`, an immutable autoincrement local identifier
 - `metadata`, mutable while the Sign exists
@@ -31,23 +33,25 @@ Each Sign contains:
 The global unique Sign reference is `(chainId, consoleAddress, key)`. Multiple Signs MAY share the same `tokenId`.
 
 Apeiron Core standardizes:
-- Console-owned Sign state
-- whitelist-based compliance
+- Console-owned policy and execution rules
+- isolated critical Sign state in ConsoleStorage
 - owner/operator permissions
 - recovery flows
 - mandatory lock and delay controls
 - transfer-readiness primitives
 - inbound and outbound transfer policy controls
 - mandatory metadata support and metadata resolution behavior
+- EXTCODEHASH-based compliance for Console, ConsoleStorage, and active Cartridge when present
 
-Transfer orchestration MAY be implemented by compliant Cartridges or other compliant Console flows, while all actual Sign state changes are always executed through Console functions.
+Compliant remote communication is Console-to-Console. Cartridges MAY define orchestration logic and local execution behavior, but they MUST NOT directly access or mutate the critical Sign state stored in ConsoleStorage.
 
 ## Motivation
 
 ### Why this standard exists
 
 Existing token standards do not directly model:
-- sovereign per-user contract storage
+- sovereign per-user policy contracts
+- isolated critical token state in a dedicated storage contract
 - direct onchain representation anchors
 - modular execution through pluggable Cartridges
 - whitelist-based interoperability
@@ -56,13 +60,14 @@ Existing token standards do not directly model:
 Apeiron Core is designed for systems where:
 - a user or entity controls a dedicated Console
 - trust in counterparties is explicit
-- state integrity must remain protected from external logic
+- critical Sign state must remain protected from external execution logic
 - transfer availability must not depend on one Cartridge being permanently connected
+- complex local execution modules can exist without being granted direct critical state authority
 
 ### Design goals
 
 - Immutable Console logic
-- Strict storage sovereignty
+- Strict critical storage sovereignty
 - Safe modularity through Cartridges
 - Explicit cross-Console trust boundaries
 - Standardized recovery and locking controls
@@ -82,8 +87,8 @@ This ERC does not standardize:
 - deployment tooling
 
 This ERC may be accompanied by:
-- a Pong reference cartridge specification
-- a Collection/Asteroids reference cartridge specification
+- a Pong reference Cartridge specification
+- a Collection/Asteroids reference Cartridge specification
 - a reference implementation repository
 
 ## Specification
@@ -96,19 +101,50 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 #### Console
 
-An immutable contract that stores and governs Signs, exposes all authorized state-changing functions, holds whitelist and policy configuration, and may hold one active Cartridge address at a time.
+An immutable contract that:
+- governs Signs
+- holds whitelist and policy configuration
+- manages owner/operator/recovery controls
+- exposes authorized execution functions
+- may hold one active Cartridge address at a time
+- points to exactly one immutable `ConsoleStorage`
+- performs compliant remote Console-to-Console communication
+
+#### ConsoleStorage
+
+A dedicated contract that:
+- holds the critical Sign state
+- is bound permanently to exactly one Console
+- only accepts critical-state mutation calls from that Console
+- exposes minimal state getters and restricted mutation functions
 
 #### Cartridge
 
-An external execution module used by a Console. A Cartridge MAY request actions through Console functions but MUST NOT directly modify Console storage and MUST NOT rely on fallback-driven storage mutation.
+An optional execution module connected to a Console.
+
+A Cartridge MAY:
+- provide local execution logic
+- be invoked by the Console
+- be invoked by users through Console-defined flows
+- consume Console helpers and policy primitives
+
+A Cartridge MUST NOT:
+- directly call or mutate `ConsoleStorage`
+- become the authoritative remote caller in compliant cross-Console flows
+- redefine Apeiron compliance
 
 #### Sign
 
-The Apeiron token unit stored by a Console. A Sign has `tokenId`, `key`, and `metadata`.
+The Apeiron token unit governed by a Console and stored in ConsoleStorage.
+
+A Sign has:
+- `tokenId`
+- `key`
+- `metadata`
 
 #### tokenId
 
-An immutable `string` representation anchor chosen by the use case. It MAY be a hash, explanation, identifier, or other direct reference. It is not required to be unique.
+An immutable `string` representation anchor chosen by the use case. It MAY be a hash, explanation, description, identifier, or other direct reference. It is not required to be unique.
 
 #### key
 
@@ -116,11 +152,11 @@ An immutable autoincrement identifier local to one Console. It MUST NOT be reuse
 
 #### metadata
 
-Mutable while the Sign exists. It is stored and changed only through Console functions.
+Mutable while the Sign exists. The critical stored value is held in `ConsoleStorage` and its effective output may be resolved by Console rules.
 
 #### stored metadata
 
-The metadata value explicitly stored for a Sign in the Console state.
+The metadata value explicitly stored for a Sign in `ConsoleStorage`.
 
 #### resolved metadata
 
@@ -128,13 +164,15 @@ The metadata output returned by the Console according to its configured metadata
 
 ### Core Invariants
 
-#### Sign state authority
+#### Critical Sign state authority
 
-All Sign state changes MUST occur through Console functions.
+Critical Sign state MUST be stored in `ConsoleStorage`.
 
-No Cartridge MAY directly mutate Console storage.
+Critical Sign state changes MUST occur only through the restricted API of `ConsoleStorage`, callable only by its bound Console.
 
-No external module MAY bypass Console mutation rules.
+No Cartridge MAY directly call or mutate `ConsoleStorage`.
+
+No external module MAY bypass the Console-to-Console or Console-to-ConsoleStorage rules that protect critical Sign state.
 
 #### Console immutability
 
@@ -143,6 +181,12 @@ Console logic MUST be immutable after deployment.
 Console ownership MAY change.
 
 Console policy state MAY change according to the standard rules.
+
+#### ConsoleStorage immutability of binding
+
+Each `ConsoleStorage` MUST be permanently bound to one Console.
+
+That bound Console address MUST NOT be changeable after deployment.
 
 #### Cartridge connection model
 
@@ -156,7 +200,7 @@ The active Cartridge MAY be plugged, changed, or unplugged only through Console 
 
 `key` MUST remain immutable after creation.
 
-Deleting a Sign removes the Sign from the Console state.
+Deleting a Sign removes the Sign from the active state.
 
 Recreated Signs on remote Consoles receive a new local `key`.
 
@@ -170,7 +214,7 @@ This standard does not require one `tokenId` to map to only one Sign.
 
 `metadata` MAY be changed while the Sign exists.
 
-Metadata changes MUST occur through Console functions.
+Metadata changes MUST occur through Console-authorized paths and the restricted `ConsoleStorage` API.
 
 Metadata MAY be changed by authorized owner, operator, or active Cartridge flows, subject to local policy.
 
@@ -184,7 +228,7 @@ The Console MUST also expose an always-available compliant incoming transfer pat
 
 #### Fallback restrictions
 
-Fallback and receive paths MUST NOT be used as implicit Sign mutation mechanisms.
+Fallback and receive paths MUST NOT be used as implicit critical-state mutation mechanisms.
 
 ### Authorization Model
 
@@ -210,7 +254,7 @@ Operators MAY perform only the actions allowed by the standard and implementatio
 
 The active Cartridge MAY call only the Console functions allowed for Cartridge-driven behavior.
 
-Being active MUST NOT grant general storage authority.
+Being active MUST NOT grant direct critical storage authority over `ConsoleStorage`.
 
 ### Compliance Model
 
@@ -218,36 +262,56 @@ Being active MUST NOT grant general storage authority.
 
 Each Console MUST maintain:
 - a whitelist of allowed Console runtime code hashes
+- a whitelist of allowed ConsoleStorage runtime code hashes
 - a whitelist of allowed Cartridge runtime code hashes
 
-#### Active Cartridge getter
+#### Console identity getters
 
-The Console MUST expose the current active Cartridge address through a getter.
+The Console MUST expose:
+- the current active Cartridge address
+- the bound `ConsoleStorage` address
 
 #### EXTCODEHASH-based compliance
 
-Apeiron compliance is determined exclusively by the local allowlists of runtime code hashes.
+Apeiron compliance is determined exclusively by local allowlists of runtime code hashes.
 
-For cross-Console operations, an implementation MUST be able to verify:
-- the runtime code hash of the remote Console
-- the runtime code hash of the remote active Cartridge, when relevant to the flow
+For compliant cross-Console operations, an implementation MUST verify:
+1. the runtime code hash of the remote Console
+2. the runtime code hash of the remote ConsoleStorage
+3. the runtime code hash of the remote active Cartridge, if a remote active Cartridge exists
 
 A remote contract address MAY be used:
 - to identify a concrete endpoint to inspect
+- to query its bound ConsoleStorage
 - to query its active Cartridge
 - to apply local inbound or outbound policy rules
 
 However, compliance itself MUST NOT be determined by address, by symmetry, by identical deployments, or by interface auto-discovery.
 
-#### Compliance routine
+#### Canonical handshake
 
-Before any cross-Console operation that depends on Apeiron compliance, the implementation MUST:
+The Console MUST expose a public read-only handshake helper.
+
+The canonical handshake MUST:
 - inspect the runtime code hash of the remote Console
 - verify it against the local Console code hash allowlist
-- inspect the runtime code hash of the remote active Cartridge when relevant to the flow
+- query the remote Console for its bound ConsoleStorage
+- inspect the runtime code hash of that remote ConsoleStorage
+- verify it against the local ConsoleStorage code hash allowlist
+- query the remote Console for its active Cartridge
+- if the remote active Cartridge is not zero, inspect its runtime code hash
 - verify it against the local Cartridge code hash allowlist
+- return enough information for the caller to determine whether the remote path is compliant
 
-This compliance routine MAY be implemented internally and need not be exposed as a public API.
+Cartridges MAY consume this helper.
+
+Cartridges MAY implement their own compliance routine, but SHOULD NOT do so unless strictly necessary, since Apeiron Core defines the Console handshake as the canonical compliance path.
+
+#### Compliant remote communication rule
+
+In compliant cross-Console flows, the remote caller MUST be the source Console.
+
+Cartridges MUST NOT be the direct authoritative remote caller in compliant flows.
 
 #### Policy responsibility
 
@@ -266,6 +330,10 @@ The Console MUST implement a delay model for protected state transitions.
 #### Console compliance delay
 
 The Console MUST implement delayed activation for newly added Console runtime code hashes.
+
+#### ConsoleStorage compliance delay
+
+The Console MUST implement delayed activation for newly added ConsoleStorage runtime code hashes.
 
 #### Cartridge compliance delay
 
@@ -320,7 +388,7 @@ The standard SHOULD define a standardized multi-party social recovery extension.
 
 If ownership is successfully transferred through the standardized social recovery flow, the Console SHOULD:
 - reset `gstate`, `istate`, and `ostate` to unlocked
-- reset `glockdelay`, `consoleDelay`, `cartridgeDelay`, `idelay`, and `odelay` to a recovery-safe default
+- reset `glockdelay`, `consoleDelay`, `consoleStorageDelay`, `cartridgeDelay`, `idelay`, and `odelay` to a recovery-safe default
 
 The RECOMMENDED recovery-safe default is 7 days.
 
@@ -340,7 +408,7 @@ Each Console MUST support:
 #### Metadata storage and resolution
 
 Apeiron Core distinguishes between:
-- **stored metadata**: the metadata value explicitly stored for a Sign in the Console state
+- **stored metadata**: the metadata value explicitly stored for a Sign in `ConsoleStorage`
 - **resolved metadata**: the metadata output returned by the Console according to its configured resolver mode
 
 This distinction is required because a Console MAY:
@@ -353,8 +421,8 @@ This distinction is required because a Console MAY:
 The Console MUST support a metadata resolver mode.
 
 At minimum, the following modes MUST exist:
-- `Stored`: resolved metadata is taken from the metadata stored for the Sign
-- `BaseURI`: resolved metadata is constructed from the configured base URI and the Sign identifier according to the implementation rules
+- `Stored`
+- `BaseURI`
 
 #### Write-received-metadata policy
 
@@ -369,8 +437,6 @@ When disabled, the Console MAY ignore the incoming metadata payload for storage 
 The Console SHOULD expose:
 - `name()`
 - `symbol()`
-
-These values identify the Console and its Sign set for offchain tools and user interfaces.
 
 #### Metadata functions
 
@@ -444,35 +510,36 @@ The following JSON schema is RECOMMENDED for Apeiron Sign metadata:
 }
 ```
 
-#### Metadata rationale
-
-This standard intentionally separates:
-- the mutable stored metadata of a Sign
-- the resolved metadata output presented to consumers
-
-This allows Apeiron Consoles to support:
-- direct metadata storage
-- self-hosted metadata
-- transfer flows where metadata storage is optional
-- offchain-friendly metadata consumption without altering Sign identity
-
 ### Transfer Boundary
 
+#### No mandatory generic user-facing transfer function in Console core
+
 Apeiron Core does not require one universal user-facing transfer function to be embedded directly in the Console core.
+
+#### Console-native transfer support primitives
 
 Apeiron Core DOES require Console-native primitives for:
 - transfer readiness
 - waiting lists
 - pull pre-approvals
-- inbound and outbound transfer policy
+- inbound/outbound transfer policy
+- a canonical handshake helper
 - an always-available compliant incoming transfer path
 
-Transfer orchestration MAY be initiated by compliant Cartridges or by other compliant flows defined by the implementation.
+#### Cartridge-driven orchestration
+
+Transfer orchestration MAY be initiated by compliant Cartridges.
+
+Specific transfer models such as Pong SHOULD be specified in companion documents and reference implementations.
+
+#### Console-executed transfer state changes
 
 Even when transfer is Cartridge-driven:
-- source deletion MUST occur through a Console function
-- destination creation MUST occur through a Console function
+- source deletion MUST occur through a Console-authorized call into ConsoleStorage
+- destination creation MUST occur through a Console-authorized call into ConsoleStorage
 - metadata preservation MUST occur through Console-governed logic
+
+#### Recreated Sign state
 
 When a Sign is recreated on a destination Console, the destination Console MUST preserve:
 - `tokenId`
@@ -480,15 +547,19 @@ When a Sign is recreated on a destination Console, the destination Console MUST 
 
 The destination Console MUST assign a new local `key`.
 
+#### Incoming transfer path
+
 The always-available incoming transfer path MUST:
+- be callable from a remote Console
+- inspect `msg.sender` as the remote Console in compliant flows
+- use the canonical handshake helper or an equivalent internal Console routine
 - respect inbound policy state
 - respect waiting-list expectations when required
-- apply whitelist-based compliance verification through runtime code hashes
-- create the new local Sign only through Console functions
+- create the new local Sign only through Console-authorized calls into ConsoleStorage
 
 ### Required Interface
 
-The following canonical Solidity interface expresses the Apeiron Core behavior surface for Consoles.
+The following canonical Solidity interfaces express the Apeiron Core behavior surface.
 
 ```solidity
 pragma solidity ^0.8.20;
@@ -502,6 +573,68 @@ enum ApeironLockState {
 enum ApeironMetadataResolverMode {
     Stored,
     BaseURI
+}
+
+interface IApeironConsoleStorage {
+    // =============================================================
+    // Events
+    // =============================================================
+
+    event BoundConsole(address indexed console);
+
+    event SignRecordCreated(
+        uint256 indexed key,
+        string tokenId
+    );
+
+    event SignRecordDeleted(
+        uint256 indexed key,
+        string tokenId
+    );
+
+    event StoredMetadataUpdated(
+        uint256 indexed key
+    );
+
+    // =============================================================
+    // Binding
+    // =============================================================
+
+    function boundConsole() external view returns (address);
+
+    // =============================================================
+    // Critical Sign state getters
+    // =============================================================
+
+    function exists(uint256 key) external view returns (bool);
+
+    function tokenIdOf(uint256 key) external view returns (string memory);
+
+    function storedMetadataOf(uint256 key) external view returns (string memory);
+
+    function signCount() external view returns (uint256);
+
+    function representationCount(
+        string calldata tokenId
+    ) external view returns (uint256);
+
+    function nextKey() external view returns (uint256);
+
+    // =============================================================
+    // Restricted critical Sign state mutations
+    // =============================================================
+
+    function createSignRecord(
+        string calldata tokenId,
+        string calldata metadata
+    ) external returns (uint256 key);
+
+    function deleteSignRecord(uint256 key) external;
+
+    function setStoredMetadata(
+        uint256 key,
+        string calldata metadata
+    ) external;
 }
 
 interface IApeironConsole {
@@ -590,6 +723,7 @@ interface IApeironConsole {
     event RecoveryResetApplied(
         uint256 newGlockdelay,
         uint256 newConsoleDelay,
+        uint256 newConsoleStorageDelay,
         uint256 newCartridgeDelay,
         uint256 newIdelay,
         uint256 newOdelay
@@ -602,6 +736,17 @@ interface IApeironConsole {
     );
 
     event ConsoleCodehashRemoved(
+        bytes32 indexed codehash,
+        address indexed caller
+    );
+
+    event ConsoleStorageCodehashAllowed(
+        bytes32 indexed codehash,
+        uint256 activatesAt,
+        address indexed caller
+    );
+
+    event ConsoleStorageCodehashRemoved(
         bytes32 indexed codehash,
         address indexed caller
     );
@@ -638,6 +783,11 @@ interface IApeironConsole {
     );
 
     event ConsoleDelayUpdated(
+        uint256 newDelay,
+        address indexed caller
+    );
+
+    event ConsoleStorageDelayUpdated(
         uint256 newDelay,
         address indexed caller
     );
@@ -733,6 +883,8 @@ interface IApeironConsole {
 
     function owner() external view returns (address);
 
+    function consoleStorage() external view returns (address);
+
     function activeCartridge() external view returns (address);
 
     // =============================================================
@@ -814,11 +966,19 @@ interface IApeironConsole {
         bytes32 codehash
     ) external view returns (bool);
 
+    function isConsoleStorageCodehashAllowed(
+        bytes32 codehash
+    ) external view returns (bool);
+
     function isCartridgeCodehashAllowed(
         bytes32 codehash
     ) external view returns (bool);
 
     function consoleCodehashActivationTime(
+        bytes32 codehash
+    ) external view returns (uint256);
+
+    function consoleStorageCodehashActivationTime(
         bytes32 codehash
     ) external view returns (uint256);
 
@@ -830,32 +990,25 @@ interface IApeironConsole {
 
     function removeConsoleCodehash(bytes32 codehash) external;
 
+    function allowConsoleStorageCodehash(bytes32 codehash) external;
+
+    function removeConsoleStorageCodehash(bytes32 codehash) external;
+
     function allowCartridgeCodehash(bytes32 codehash) external;
 
     function removeCartridgeCodehash(bytes32 codehash) external;
 
-    /// @notice Uses the remote address only as an endpoint to inspect.
-    /// @dev Compliance result MUST be determined from EXTCODEHASH allowlists.
-    function isRemoteConsoleCompliant(
-        address remoteConsole
-    ) external view returns (bool);
-
-    /// @notice Uses the remote address only as an endpoint to inspect.
-    /// @dev Compliance result MUST be determined from EXTCODEHASH allowlists.
-    function isRemoteCartridgeCompliant(
-        address remoteCartridge
-    ) external view returns (bool);
-
-    /// @notice Uses the remote Console address as an endpoint to inspect.
-    /// @dev Compliance result MUST be determined from EXTCODEHASH allowlists.
-    function isRemotePathCompliant(
+    function txHandshake(
         address remoteConsole
     )
         external
         view
         returns (
             bool consoleCompliant,
+            bool storageCompliant,
+            bool cartridgePresent,
             bool cartridgeCompliant,
+            address remoteStorage,
             address remoteCartridge
         );
 
@@ -873,6 +1026,8 @@ interface IApeironConsole {
 
     function consoleDelay() external view returns (uint256);
 
+    function consoleStorageDelay() external view returns (uint256);
+
     function cartridgeDelay() external view returns (uint256);
 
     function idelay() external view returns (uint256);
@@ -888,6 +1043,8 @@ interface IApeironConsole {
     function setGlockdelay(uint256 delaySeconds) external;
 
     function setConsoleDelay(uint256 delaySeconds) external;
+
+    function setConsoleStorageDelay(uint256 delaySeconds) external;
 
     function setCartridgeDelay(uint256 delaySeconds) external;
 
@@ -1015,15 +1172,8 @@ interface IApeironConsole {
     // =============================================================
 
     /// @notice Receives and finalizes a compliant incoming Sign transfer.
-    /// @dev The implementation MUST:
-    ///      - apply EXTCODEHASH-based compliance checks
-    ///      - respect inbound policy state
-    ///      - respect waiting-list expectations when required
-    ///      - create the new local Sign only through Console logic
-    ///      - preserve tokenId and metadata
-    ///      - assign a fresh local key
+    /// @dev In compliant flows msg.sender MUST be the remote Console.
     function receiveTransfer(
-        address remoteConsole,
         uint256 remoteKey,
         string calldata tokenId,
         string calldata metadata
@@ -1055,7 +1205,7 @@ Updating metadata MUST:
 
 #### Compliance configuration update
 
-Newly added Console or Cartridge code hashes MUST respect the corresponding activation delay before becoming active for compliance.
+Newly added Console, ConsoleStorage, or Cartridge code hashes MUST respect the corresponding activation delay before becoming active for compliance.
 
 #### Lock update
 
@@ -1064,8 +1214,9 @@ Protected state changes MUST respect the configured lock rules and delays.
 #### Incoming transfer reception
 
 The always-available `receiveTransfer` path MUST:
-- inspect the runtime code hash of the calling or referenced remote Console according to the implementation flow
-- apply EXTCODEHASH-based compliance checks
+- treat `msg.sender` as the remote Console in compliant flows
+- execute the canonical handshake against `msg.sender`
+- apply EXTCODEHASH-based compliance checks for Console, ConsoleStorage, and Cartridge when present
 - apply inbound allowlist and blocklist rules
 - apply waiting-list expectations when required
 - preserve `tokenId` and `metadata`
@@ -1086,13 +1237,17 @@ The implementation MUST emit events sufficient to represent:
 
 ## Rationale
 
+### Why split Console and ConsoleStorage
+
+Because it lets Apeiron preserve a strong guarantee: the Cartridge never needs direct critical-state authority.
+
 ### Why immutable Consoles
 
-To protect Sign integrity, reduce trust in mutable logic, and separate long-lived state from modular behavior.
+To protect Sign integrity, reduce trust in mutable logic, and separate long-lived policy from modular behavior.
 
 ### Why Cartridges exist
 
-To allow modular execution behavior without granting storage authority.
+To allow modular application behavior without granting direct critical Sign storage authority.
 
 ### Why one active Cartridge
 
@@ -1130,7 +1285,7 @@ Compatibility layers and migration paths are out of scope for the core standard.
 
 ## Security Considerations
 
-- Cartridges MUST NOT directly write Console storage.
+- Cartridges MUST NOT directly call or mutate ConsoleStorage.
 - Incorrect whitelist configuration can lead to loss or corruption.
 - Active Cartridge changes are high-risk operations.
 - Waiting-list and pull-approval misconfiguration can create denial-of-service or unintended transfer behavior.
@@ -1140,11 +1295,13 @@ Compatibility layers and migration paths are out of scope for the core standard.
 - Metadata resolver behavior MUST NOT alter Sign identity.
 - Implementations SHOULD clearly distinguish between stored metadata and resolved metadata in offchain tooling.
 - `receiveTransfer` MUST remain subject to EXTCODEHASH-based compliance and inbound policy controls.
+- The bound Console address of ConsoleStorage MUST be immutable.
 
 ## Reference Implementation
 
 A reference implementation SHOULD be published alongside this ERC and include:
 - Console contract
+- ConsoleStorage contract
 - recovery model
 - transfer-readiness controls
 - metadata storage and resolver behavior
@@ -1153,18 +1310,18 @@ A reference implementation SHOULD be published alongside this ERC and include:
 
 Transfer behavior is expected to be demonstrated through a compliant Pong reference Cartridge.
 
-## Discussion and Companion Documents
+## Discussion and companion documents
 
-- `DISCUSSION.md`
+- `RATIONALE.md`
 - `PONG.md`
 - future cartridge specs
 - reference implementation repository
 
 ## References
 
-- Ethereum Magicians thread placeholder
-- repository links
-- informational project links
+- https://ethereum-magicians.org/t/
+- https://github.com/ariutokintumi/apeiron-protocol
+- https://x.com/ApeironProtocol
 
 ## Copyright
 
